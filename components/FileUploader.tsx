@@ -10,11 +10,12 @@ import {
   setDoc,
   where,
 } from 'firebase/firestore'
-import { deleteObject, getDownloadURL, ref, uploadBytes } from 'firebase/storage'
+import { deleteObject, getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage'
 import { db, storage } from 'lib/firebase'
 import useAuth from 'lib/hooks/useAuth'
 import useCollectionSnapshot from 'lib/hooks/useCollectionSnapshot'
 import useDragAndDrop from 'lib/hooks/useDragAndDrop'
+import { cn } from 'lib/utils'
 import { useRef, useState } from 'react'
 
 export default function FileUploader() {
@@ -28,6 +29,7 @@ export default function FileUploader() {
     if (overwrite) resetFiles()
     uploadFiles(fileList)
   })
+  const [uploadProgress, setUploadProgress] = useState([])
 
   async function resetFiles() {
     const snapshots = await getDocs(
@@ -57,10 +59,36 @@ export default function FileUploader() {
       })
 
       const storageRef = ref(storage, `${user.email}/${file.name}`)
-      const uploadedFile = await uploadBytes(storageRef, file)
-      const downloadURL = await getDownloadURL(uploadedFile.ref)
-
-      setDoc(doc(db, 'files', addedFileDoc.id), { downloadURL }, { merge: true })
+      const uploadTask = uploadBytesResumable(storageRef, file)
+      uploadTask.on(
+        'state_changed',
+        snapshot => {
+          // Observe state change events such as progress, pause, and resume
+          // Get task progress, including the number of bytes uploaded and the total number of bytes to be uploaded
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100
+          setUploadProgress(progressList => {
+            const currentProgressIndex = progressList.findIndex(({ id }) => id === addedFileDoc.id)
+            // if current progress already in the progress list
+            if (currentProgressIndex !== -1) {
+              const newProgressList = [...progressList]
+              const currentProgress = progressList[currentProgressIndex]
+              newProgressList.splice(currentProgressIndex, 1, { ...currentProgress, progress })
+              return newProgressList
+            }
+            return [...progressList, { id: addedFileDoc.id, progress }]
+          })
+          // console.log(`progress : ${progress}%`)
+        },
+        error => {
+          // if upload unsuccessful
+          console.log(error)
+        },
+        async () => {
+          // if upload success
+          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref)
+          setDoc(doc(db, 'files', addedFileDoc.id), { downloadURL }, { merge: true })
+        }
+      )
     })
   }
 
@@ -108,20 +136,40 @@ export default function FileUploader() {
           </div>
           <ul className='space-y-3'>
             {files.map(file => (
-              <li key={file.name}>
+              <li
+                key={file.id}
+                className={cn(
+                  'group border-2 border-blue-100 rounded-md overflow-hidden hover:border-blue-400',
+                  !file.downloadURL
+                    ? 'pointer-events-none opacity-40'
+                    : 'pointer-events-auto opacity-100'
+                )}
+              >
                 <a
                   href={file.downloadURL}
                   download
                   target='_blank'
-                  className='flex justify-between items-center group p-2 border-2 border-blue-100 rounded-md hover:border-blue-400'
+                  className='flex justify-between items-center p-2 '
                 >
-                  {file.name} ({(file.size / 1024).toFixed(1)} kb)
-                  {/* 
-                    TODO:
-                    [] show loading indicator when its still uploading, when its done show download icon
-                  */}
-                  <DownloadIcon className='w-4 h-4 ml-4 text-blue-400 group-hover:text-blue-600' />
+                  <span>
+                    {file.name} ({(file.size / 1024).toFixed(1)} kb)
+                  </span>
+                  {file.downloadURL ? (
+                    <DownloadIcon className='w-4 h-4 ml-4 text-blue-400 group-hover:text-blue-600' />
+                  ) : (
+                    <span className='text-sm font-bold'>
+                      {Math.floor(uploadProgress.find(({ id }) => id === file.id)?.progress)}%
+                    </span>
+                  )}
                 </a>
+                {!file.downloadURL && (
+                  <div
+                    className='h-1 bg-blue-400 rounded-full transition-all'
+                    style={{
+                      width: `${uploadProgress.find(({ id }) => id === file.id)?.progress}%`,
+                    }}
+                  ></div>
+                )}
               </li>
             ))}
           </ul>

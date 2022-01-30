@@ -8,7 +8,7 @@ export default function useCollectionSnapshot(ref: CollectionReference | Query<D
     const unsub = onSnapshot(ref, querySnapshot => {
       let newCollection = []
       querySnapshot.forEach(doc => {
-        newCollection = [...newCollection, doc.data()]
+        newCollection = [...newCollection, { id: doc.id, ...doc.data() }]
       })
       setCollection(newCollection)
     })
