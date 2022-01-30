@@ -15,7 +15,7 @@ import { db, storage } from 'lib/firebase'
 import useAuth from 'lib/hooks/useAuth'
 import useCollectionSnapshot from 'lib/hooks/useCollectionSnapshot'
 import useDragAndDrop from 'lib/hooks/useDragAndDrop'
-import { cn } from 'lib/utils'
+import { cn, formatBytes } from 'lib/utils'
 import { useRef, useState } from 'react'
 
 export default function FileUploader() {
@@ -66,6 +66,7 @@ export default function FileUploader() {
           // Observe state change events such as progress, pause, and resume
           // Get task progress, including the number of bytes uploaded and the total number of bytes to be uploaded
           const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100
+
           setUploadProgress(progressList => {
             const currentProgressIndex = progressList.findIndex(({ id }) => id === addedFileDoc.id)
             // if current progress already in the progress list
@@ -90,6 +91,10 @@ export default function FileUploader() {
         }
       )
     })
+  }
+
+  function displayProgress(fileId: string) {
+    return uploadProgress.find(({ id }) => id === fileId)?.progress ?? '0'
   }
 
   return (
@@ -139,7 +144,7 @@ export default function FileUploader() {
               <li
                 key={file.id}
                 className={cn(
-                  'group border-2 border-blue-100 rounded-md overflow-hidden hover:border-blue-400',
+                  'group border-2 border-blue-100/80 rounded-md overflow-hidden hover:border-blue-300 hover:bg-blue-100',
                   !file.downloadURL
                     ? 'pointer-events-none opacity-40'
                     : 'pointer-events-auto opacity-100'
@@ -152,21 +157,26 @@ export default function FileUploader() {
                   className='flex justify-between items-center p-2 '
                 >
                   <span>
-                    {file.name} ({(file.size / 1024).toFixed(1)} kb)
+                    <span className='font-medium text-gray-500 group-hover:text-gray-900'>
+                      {file.name}
+                    </span>
+                    <span className='text-xs bg-blue-200 text-blue-600 px-[3px] py-[1px] font-medium rounded-sm ml-2 opacity-50 group-hover:opacity-100'>
+                      {formatBytes(file.size)}
+                    </span>
                   </span>
                   {file.downloadURL ? (
                     <DownloadIcon className='w-4 h-4 ml-4 text-blue-400 group-hover:text-blue-600' />
                   ) : (
                     <span className='text-sm font-bold'>
-                      {Math.floor(uploadProgress.find(({ id }) => id === file.id)?.progress)}%
+                      {Math.floor(displayProgress(file.id))}%
                     </span>
                   )}
                 </a>
                 {!file.downloadURL && (
                   <div
-                    className='h-1 bg-blue-400 rounded-full transition-all'
+                    className='h-1 bg-blue-400 rounded-tr-full rounded-br-full transition-all'
                     style={{
-                      width: `${uploadProgress.find(({ id }) => id === file.id)?.progress}%`,
+                      width: `${displayProgress(file.id)}%`,
                     }}
                   ></div>
                 )}
@@ -183,7 +193,7 @@ function SelectFileModal({ open, onClose, fileDropperRef, onFileSelected }) {
   const fileUploaderRef = useRef<HTMLInputElement>(null)
 
   return (
-    <div className={`fixed inset-0 ${open ? 'z-0 opacity-100' : '-z-10 opacity-0'}`}>
+    <div className={`fixed inset-0 ${open ? 'z-50 opacity-100' : '-z-10 opacity-0'}`}>
       <div onClick={onClose} className='fixed inset-0 bg-black/50'></div>
       <div
         className='absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-md w-[900px] h-[700px] max-w-[90%] max-h-[90vh] flex justify-center items-center flex-col'
